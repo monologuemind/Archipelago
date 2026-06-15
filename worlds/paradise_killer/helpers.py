@@ -5,8 +5,8 @@ from BaseClasses import ItemClassification
 
 from .areas import AREA_NAMES, ISLAND_FLOATING, ISLAND_MAIN, resolve_area, resolve_region
 from .enums import ItemCategory
-from ._registry_data import REGISTRY
-from ._bp_zone_data import BP_ZONE_RAW
+from .registry_data import REGISTRY
+from .bp_zone_data import BP_ZONE_RAW
 from .guide_data import GUIDE_ITEM_LOCATION_MAP
 
 
