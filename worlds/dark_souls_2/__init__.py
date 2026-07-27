@@ -1,5 +1,5 @@
 from collections import defaultdict
-from typing import Any, Iterable, List, Mapping, TextIO
+from typing import Any, Iterable, List, Mapping, Optional, TextIO, cast
 
 from BaseClasses import (Item, ItemClassification, Location,
                          LocationProgressType, Region, Tutorial)
@@ -9,22 +9,11 @@ from worlds.generic.Rules import add_item_rule, add_rule, set_rule
 
 from .enums import DLC, APItemType, DS2Version, ItemCategory
 from .options import DarkSouls2Options, option_groups
-from .locations import LocationData, locations_by_region, regions_by_location, locations_to_keep_unrandomized, location_name_groups
+from .locations import LocationData, locations_by_region_name_and_id, regions_by_location, locations_to_keep_unrandomized, location_name_groups
 from .items import ItemData, item_dictionary, item_list, item_name_groups, trap_dictionary, trap_list
 from .regions import region_dictionary, region_list
 from .rules import connection_rules, location_rules, combat_logic_easy, combat_logic_medium, combat_logic_hard
 from .traps import TRAP_PRESETS
-
-class DS2Location(Location):
-    game: str = "Dark Souls II"
-    data: LocationData
-
-    def __init__(self, player, name, address, parent, data):
-        self.data = data
-        super(DS2Location, self).__init__(
-            player, name, address, parent
-        )
-
 
 class DS2Item(Item):
     game: str = "Dark Souls II"
@@ -36,6 +25,16 @@ class DS2Item(Item):
             name, classification, code, player
         )
 
+class DS2Location(Location):
+    game: str = "Dark Souls II"
+    data: LocationData
+    item: Optional[DS2Item] = None
+
+    def __init__(self, player, name, address, parent, data):
+        self.data = data
+        super(DS2Location, self).__init__(
+            player, name, address, parent
+        )
 
 class DarkSouls2Web(WebWorld):
     setup_en = Tutorial(
@@ -80,7 +79,7 @@ class DarkSouls2World(World):
 
     location_name_to_id = {
         location_data.name: location_data.address
-        for locations in locations_by_region.values()
+        for locations in locations_by_region_name_and_id.values()
         for location_data in locations
         if location_data.address != None
     }
@@ -137,30 +136,35 @@ class DarkSouls2World(World):
 
         # create regions and locations
         for region_data in region_list:
-            if not self._is_dlc_enabled(region_data.dlc):
+            if region_data.dlc != None and not self._is_dlc_enabled(region_data.dlc):
                 continue
             region = Region(region_data.name, self.player, self.multiworld)
-
-            for location_data in locations_by_region[region_data.name]:
-                if not self._is_version_selected(location_data.version):
+            
+            for location_key, locations in locations_by_region_name_and_id.items():
+                # TODO: find a better way to fix the mismatch between the region_list and the locations_by_region_name_and_id
+                if location_key.region_name != region_data.name:
                     continue
-                # TODO check if user chose to remove this
+                
+                for location_data in locations:
+                    if location_data.version != None and not self._is_version_selected(location_data.version):
+                        continue
+                    # TODO check if user chose to remove this
 
-                if location_data.is_event:
-                    region.add_event(location_data.name)
-                    continue
+                    if location_data.is_event:
+                        region.add_event(location_data.name)
+                        continue
 
-                location = DS2Location(
-                    self.player,
-                    location_data.name,
-                    location_data.address,
-                    region,
-                    location_data,
-                )
+                    location = DS2Location(
+                        self.player,
+                        location_data.name,
+                        location_data.address,
+                        region,
+                        location_data,
+                    )
 
-                if location_data.missable:
-                    location.progress_type = LocationProgressType.EXCLUDED
-                region.locations.append(location)
+                    if location_data.missable:
+                        location.progress_type = LocationProgressType.EXCLUDED
+                    region.locations.append(location)
 
             self.multiworld.regions.append(region)
             region_lookup[region_data.name] = region
@@ -191,11 +195,13 @@ class DarkSouls2World(World):
         item_pool: List[DS2Item] = []
         items_added: List[str] = []
 
-        locations_to_fill: List[DS2Location] = self.multiworld.get_unfilled_locations(self.player)
+        locations_to_fill = cast(List[DS2Location], self.multiworld.get_unfilled_locations(self.player))
         max_pool_size = len(locations_to_fill)
 
         # Add original items from locations
         for location in locations_to_fill:
+            if location.data.original_item_name == None:
+                continue
             item_data = item_dictionary[location.data.original_item_name]
 
             if location.data.keep_original_item:
@@ -258,12 +264,12 @@ class DarkSouls2World(World):
         self.multiworld.itempool.extend(item_pool)
 
     def set_rules(self) -> None:
-        locations: Iterable[DS2Location] = self.multiworld.get_locations(self.player)
+        locations = cast(Iterable[DS2Location], self.multiworld.get_locations(self.player))
         for location in locations:
             if location.address != None and location.data.is_shop:
                 add_item_rule(location, lambda item:
                                 item.player != self.player
-                                or (not item.data.bundle and not item.name.lower().startswith("torch"))
+                                or (not cast(DS2Item, item).data.bundle and not item.name.lower().startswith("torch"))
                             )
 
         for connection_rule_data in connection_rules:
@@ -271,9 +277,9 @@ class DarkSouls2World(World):
             from_region = region_dictionary[_from]
             to_region = region_dictionary[_to]
 
-            if not self._is_dlc_enabled(from_region.dlc):
+            if from_region.dlc != None and not self._is_dlc_enabled(from_region.dlc):
                 continue
-            if not self._is_dlc_enabled(to_region.dlc):
+            if to_region.dlc != None and not self._is_dlc_enabled(to_region.dlc):
                 continue
             if not self._is_version_selected(connection_rule_data.version):
                 continue
@@ -287,7 +293,7 @@ class DarkSouls2World(World):
             region_name = regions_by_location[location_rule_data.spot]
             region_data = region_dictionary[region_name]
 
-            if not self._is_dlc_enabled(region_data.dlc):
+            if region_data.dlc != None and not self._is_dlc_enabled(region_data.dlc):
                 continue
             if not self._is_version_selected(location_rule_data.version):
                 continue
@@ -334,14 +340,14 @@ class DarkSouls2World(World):
 
         if item_data.max_reinforcement > 0 and self.random.randint(0, 99) < self.options.randomize_equipment_level_percentage:
             if item_data.max_reinforcement == 5:
-                min_reinforcement = self.options.min_equipment_reinforcement_in_5
-                max_reinforcement = self.options.max_equipment_reinforcement_in_5
+                min_reinforcement = self.options.min_equipment_reinforcement_in_5.value
+                max_reinforcement = self.options.max_equipment_reinforcement_in_5.value
                 if min_reinforcement > max_reinforcement: min_reinforcement = max_reinforcement
                 item_data.reinforcement = self.random.randint(min_reinforcement, max_reinforcement)
 
             if item_data.max_reinforcement == 10:
-                min_reinforcement = self.options.min_equipment_reinforcement_in_10
-                max_reinforcement = self.options.max_equipment_reinforcement_in_10
+                min_reinforcement = self.options.min_equipment_reinforcement_in_10.value
+                max_reinforcement = self.options.max_equipment_reinforcement_in_10.value
                 if min_reinforcement > max_reinforcement: min_reinforcement = max_reinforcement 
                 item_data.reinforcement = self.random.randint(min_reinforcement, max_reinforcement)
 
@@ -393,9 +399,9 @@ class DarkSouls2World(World):
             keep_unrandomized.add(375400601)
 
         _location_map = {}
-        for locations in locations_by_region.values():
+        for location_key, locations in locations_by_region_name_and_id.items():
             for location_data in locations:
-                if location_data.is_event:
+                if location_data.is_event or location_data.ds2_id == None or location_data.location_type == None:
                     continue
 
                 key = location_data.ds2_id + location_data.location_type.value
@@ -403,6 +409,10 @@ class DarkSouls2World(World):
                 if key not in _location_map:
                     _location_map[key] = {
                         "location_key": key,
+                        # allow for item customized regions while preserving region groups not matching
+                        # for example "Majula: Throne Defender Helm" is in the "Throne of Want" region
+                        # but is actually obtained in Majula, so the location has it's region_id override set
+                        "region_id": location_data.region_id or location_key.region_id,
                         "archipelago_ids": []
                     }
 

@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import List
+from typing import List, Optional
 
 from .enums import DLC
 
@@ -12,7 +12,7 @@ class RegionData:
     connections: List[str]
     """The names of regions that become accessible when entering this region."""
 
-    dlc: DLC = None
+    dlc: Optional[DLC] = None
     """The DLC this region belongs to."""
 
 
