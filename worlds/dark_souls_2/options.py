@@ -293,6 +293,13 @@ class DS2SharedTraps(Toggle):
     """This allows a player sending a trap to someone else to also experience said trap."""
     display_name = "DS2 Shared Traps"
 
+class TrapLink(Toggle):
+    """Whether your received traps are linked to other players.
+    You will also receive any linked traps from other players with Trap Link enabled,
+    if you have a weight above "none" set for that trap.
+    """
+    display_name = "Trap Link"
+
 option_groups = [
     OptionGroup("Game Options", [
         GameVersion,
@@ -332,6 +339,7 @@ option_groups = [
         TrapPreset,
         RandomTrapCarving,
         DS2SharedTraps,
+        TrapLink,
         PoisonTrap,
         BleedingTrap,
         CurseTrap,
@@ -384,6 +392,7 @@ class DarkSouls2Options(PerGameCommonOptions):
     trap_preset: TrapPreset
     random_trap_carving: RandomTrapCarving
     ds2_shared_traps: DS2SharedTraps
+    trap_link: TrapLink
     poison_trap: PoisonTrap
     bleeding_trap: BleedingTrap
     curse_trap: CurseTrap
